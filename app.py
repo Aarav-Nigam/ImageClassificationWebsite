@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 import torchvision.models as models
 import json
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Load pre-trained ResNet-18 model
 model = models.resnet18(pretrained=True)
@@ -26,9 +27,22 @@ def predict(image):
     image = transform(image).unsqueeze(0)
     with torch.no_grad():
         outputs = model(image)
-    _, predicted = torch.max(outputs, 1)
-    confidence = torch.softmax(outputs, dim=1)[0][predicted].item() * 100
-    return predicted.item(), confidence
+    _, predicted = torch.topk(outputs, 5)
+    confidences = torch.softmax(outputs, dim=1)[0][predicted[0]].tolist()
+    predictions = [(labels[predicted[0][i].item()], confidences[i] * 100) for i in range(5)]
+    return predictions
+
+# Function to plot pie chart
+def plot_pie_chart(predictions):
+    other_confidence = 100 - sum([confidence for _, confidence in predictions])
+    prediction_labels = [class_name.upper() for class_name, _ in predictions] + ['Other']
+    prediction_confidences = [confidence for _, confidence in predictions] + [other_confidence]
+
+    fig, ax = plt.subplots()
+    ax.pie(prediction_confidences, labels=prediction_labels, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.set_title("Top 5 Predictions with Respect to Others")
+    return fig
 
 st.set_page_config(
     page_title="Image Classifier",
@@ -60,22 +74,21 @@ predict_button = st.button("Predict")
 if uploaded_image is not None:
     image = Image.open(uploaded_image)
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([1, 1])
     with col1:
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    prediction, confidence = predict(image)
-    class_name = labels[prediction]
+    predictions = predict(image)
     with col2:
-        st.header("Prediction: "+class_name.upper() )
-        st.header("Confidence: "+ f"{confidence:.2f}%")
-        # Create a pie chart to show confidence
-        fig, ax = plt.subplots()
-        ax.pie([confidence, 100 - confidence], labels=["Confidence", "Other"], autopct='%1.1f%%', startangle=90)
-        ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-        st.pyplot(fig)
+        st.header("Top 5 Predictions:")
+        for i, (class_name, confidence) in enumerate(predictions):
+            st.subheader(f"{i+1}. {class_name.upper()}")
+            st.write(f"Confidence: {confidence:.2f}%")
+            st.write("---")
 
-
+    # Plot the pie chart
+    fig = plot_pie_chart(predictions)
+    st.pyplot(fig)
 
 # Define the footer HTML content with CSS for sticky positioning
 footer = '''
